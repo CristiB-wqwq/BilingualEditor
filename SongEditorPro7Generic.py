@@ -1,8 +1,19 @@
 import presentation_pb2
 from uuid import uuid1
 import json
+import os
+import sys
 
 TEMPLATE = 0
+
+
+def resource_path(relative_path):
+    """Get absolute path to resource, works for dev and for PyInstaller."""
+    if hasattr(sys, '_MEIPASS'):
+        base_path = sys._MEIPASS
+    else:
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_path, relative_path)
 
 
 def make_uuid():
@@ -44,7 +55,7 @@ def encode_for_rtf(some_string):
 
 def get_text_block_names():
     names = []
-    sample_file = r"Template.pro"
+    sample_file = resource_path("Template.pro")
     presentation_obj = presentation_pb2.Presentation()
     file1 = open(sample_file, mode='rb')
     presentation_obj.ParseFromString(file1.read())
@@ -56,7 +67,7 @@ def get_text_block_names():
 def split_slides(text_block_names, song_texts, max_line_count):
     slides = []
     slide = {"label": "Verse 1"}
-    with open("GroupNames.txt", "r") as group_names:
+    with open(resource_path("GroupNames.txt"), "r") as group_names:
         labels = group_names.read().split("\n")
 
     tmp_labels = []
@@ -71,6 +82,7 @@ def split_slides(text_block_names, song_texts, max_line_count):
         else:
             tmp_labels.append(a_label)
     labels = tmp_labels
+    labels_lower = [l.lower() for l in labels]
 
     line_index = 0
     lines_in_slide = 0
@@ -78,6 +90,8 @@ def split_slides(text_block_names, song_texts, max_line_count):
         to_next_line = False
         for index, text_block_name in enumerate(text_block_names):
             if line_index >= len(song_texts[text_block_names[0]]):
+                if slide and any(name in slide for name in text_block_names):
+                    slides.append(slide)
                 return slides
             if not to_next_line:  # slide complete
                 if (song_texts[text_block_names[0]][line_index].strip() == "") or (lines_in_slide == max_line_count):
@@ -88,9 +102,18 @@ def split_slides(text_block_names, song_texts, max_line_count):
                 if song_texts[text_block_names[0]][line_index].strip() == "":
                     to_next_line = True
             if not to_next_line:  # store any group label
-                if song_texts[text_block_names[0]][line_index] in labels:
+                line_lower = song_texts[text_block_names[0]][line_index].lower()
+                if line_lower in labels_lower:
                     to_next_line = True
-                    slide["label"] = song_texts[text_block_name][line_index]
+                    # Folosește label-ul din GroupNames.txt (title case) pentru ProPresenter
+                    matched_idx = labels_lower.index(line_lower)
+                    # Dacă slide-ul curent are deja conținut, salvează-l și începe unul nou
+                    has_content = any(name in slide for name in text_block_names)
+                    if has_content:
+                        slides.append(slide)
+                        slide = {}
+                        lines_in_slide = 0
+                    slide["label"] = labels[matched_idx]
             if not to_next_line:  # append lines to slide
                 if len(song_texts[text_block_name]) > line_index:
                     if text_block_name in slide and slide[text_block_name]:
@@ -117,7 +140,7 @@ def convert_to_rtf_unicodes(line):
 
 def gen_pro_data(text_block_names, song_texts, line_count):
 
-    sample_file = r"Template.pro"
+    sample_file = resource_path("Template.pro")
     presentation_obj = presentation_pb2.Presentation()
     file1 = open(sample_file, mode='rb')
     presentation_obj.ParseFromString(file1.read())
@@ -144,14 +167,14 @@ def gen_pro_data(text_block_names, song_texts, line_count):
         element.element.text.rtf_data = empty_rtf
         element.element.uuid.string = make_uuid()
 
-    # update reference to intro slide
-    presentation_obj.cue_groups[0].group.name = "Intro"
+    # update reference to blank slide (for stage display)
+    presentation_obj.cue_groups[0].group.name = "Blank"
     presentation_obj.cue_groups[0].group.uuid.string = make_uuid()
     intro_uuid = make_uuid()
     presentation_obj.cue_groups[0].cue_identifiers[0].string = intro_uuid
     presentation_obj.cues[0].uuid.string = intro_uuid
     presentation_obj.cue_groups[-1].group.application_group_identifier.string = make_uuid()
-    presentation_obj.cue_groups[-1].group.application_group_name = "Intro"
+    presentation_obj.cue_groups[-1].group.application_group_name = "Blank"
 
     presentation_obj.cues[0].actions[0].uuid.string = make_uuid()
     presentation_obj.cues[0].actions[0].slide.presentation.base_slide.uuid.string = make_uuid()
@@ -169,6 +192,7 @@ def gen_pro_data(text_block_names, song_texts, line_count):
             presentation_obj.cue_groups[cue_group_id].cue_identifiers[-1].string = slide_uuid
         else:
             add_que_group(presentation_obj, slide_label, slide_uuid)
+        prev_slide_label = slide_label
 
         presentation_obj.cues.add()
         presentation_obj.cues[-1].CopyFrom(presentation_obj.cues[TEMPLATE])

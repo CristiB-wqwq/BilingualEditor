@@ -2,7 +2,11 @@ Verse
 Verse 1..30
 Chorus
 Chorus 1..10
+Bridge
 Bridge 1..10
+PreChorus
+PreChorus 1..10
+Pre-Chorus
 Pre-Chorus 1..10
 Tag
 Intro
@@ -14,3 +18,4 @@ Interlude
 Vamp
 Turnaround
 Blank
+Empty
